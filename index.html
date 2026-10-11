@@ -154,7 +154,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   <div class="inline">
     <div class="field">
       <label for="fontSize">Font size (pt)</label>
-      <input id="fontSize" type="number" min="4" max="72" step="0.5" value="12" disabled>
+      <input id="fontSize" type="number" min="4" max="72" step="0.5" value="8" disabled>
     </div>
     <div class="field">
       <label for="align">Alignment</label>
@@ -184,6 +184,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   <div class="inline">
     <button id="fitText" disabled>Fit text to box</button>
     <button id="clearText" disabled>Clear text</button>
+    <button id="deleteBoxSide" type="button" disabled>Delete</button>
   </div>
   
   
@@ -203,7 +204,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   const fileInput=$('file'), stage=$('stage'), empty=$('empty'), canvas=$('pdfCanvas'), overlay=$('overlay');
   const ctx=canvas.getContext('2d');
   const state={pdfjs:null, originalBytes:null, fileName:'edited.pdf', page:1, pageCount:0, scale:1, zoom:1, fitScale:1, fitWidthScale:1, viewport:null, boxes:[], selectedId:null, drawing:null, pendingChar:null, nextId:1, renderToken:0, renderTask:null, miniPreviewShowingWidth:false, zoomBeforeMiniFit:1};
-  const controls=['text','fontFamily','fontSize','align','bold','italic','ink','lineHeight','padding','fitText','clearText','deleteBox','removeNewlines','keepLineBreaks'];
+  const controls=['text','fontFamily','fontSize','align','bold','italic','ink','lineHeight','padding','fitText','clearText','deleteBox','deleteBoxSide','removeNewlines','keepLineBreaks'];
   const setStatus=s=>$('status').textContent=s;
   const selected=()=>state.boxes.find(b=>b.id===state.selectedId);
   const pageBoxes=()=>state.boxes.filter(b=>b.page===state.page);
@@ -347,7 +348,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     if(!state.drawing)return;
     const r=state.drawing; state.drawing=null;
     if(r.w<8||r.h<8){drawBoxes();return;}
-    const b={id:state.nextId++,page:state.page,x:r.x/state.scale,y:r.y/state.scale,w:r.w/state.scale,h:r.h/state.scale,text:'',fontFamily:'Helvetica',fontSize:12,bold:false,italic:false,align:'left',color:'#111111',lineHeight:1.15,padding:1};
+    const b={id:state.nextId++,page:state.page,x:r.x/state.scale,y:r.y/state.scale,w:r.w/state.scale,h:r.h/state.scale,text:'',fontFamily:'Helvetica',fontSize:8,bold:false,italic:false,align:'left',color:'#111111',lineHeight:1.15,padding:1};
     state.boxes.push(b); selectBox(b.id); drawBoxes(); setStatus('Text box created. Type in the settings panel.');
   });
 
@@ -357,7 +358,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     if(b){
       $('text').value=b.text; $('fontFamily').value=b.fontFamily||'Helvetica'; $('fontSize').value=b.fontSize; $('align').value=b.align; $('bold').checked=b.bold; $('italic').checked=!!b.italic; $('ink').value=b.color; $('lineHeight').value=b.lineHeight; $('padding').value=b.padding;
     } else { $('text').value=''; }
-    $('deleteBox').disabled=!b; $('fitText').disabled=!b; $('clearText').disabled=!b; drawBoxes();
+    $('deleteBox').disabled=!b; $('deleteBoxSide').disabled = !b; $('deleteBoxSide').disabled=!b; $('fitText').disabled=!b; $('clearText').disabled=!b; drawBoxes();
   }
   function updateSelected(){
     const b=selected(); if(!b)return;
@@ -382,7 +383,48 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       setStatus('Special-character placement cancelled.');
     }
   });
-  $('deleteBox').addEventListener('click',()=>{if(!selected())return;state.boxes=state.boxes.filter(b=>b.id!==state.selectedId);selectBox(null);setStatus('Text box deleted.');});
+  const deleteSelectedBox = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const selectedBox = state.boxes.find(box => box.id === state.selectedId);
+    if (!selectedBox) {
+      setStatus('Select a text box first, then click Delete.');
+      return;
+    }
+
+    state.boxes = state.boxes.filter(box => box.id !== selectedBox.id);
+    state.selectedId = null;
+
+    const textInput = $('text');
+    if (textInput) textInput.value = '';
+    enableEditor(false);
+
+    const help = $('selectionHelp');
+    if (help) help.textContent = 'Draw a rectangle on the PDF to add a text box.';
+
+    // Redraw immediately so the selected rectangle disappears from the preview.
+    drawBoxes();
+    setStatus('Text box deleted.');
+  };
+
+  $('deleteBox').addEventListener('click', deleteSelectedBox);
+  $('deleteBoxSide').addEventListener('click', deleteSelectedBox);
+
+  // Keyboard delete shortcut: remove the selected PDF text box when focus is not
+  // inside an editable field. Let Delete/Backspace edit text normally in controls.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+    const target = event.target;
+    const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+    const typing = tag === 'input' || tag === 'textarea' || tag === 'select' ||
+      (target && target.isContentEditable);
+    if (typing) return;
+    if (!state.boxes.some(box => box.id === state.selectedId)) return;
+    event.preventDefault();
+    deleteSelectedBox(event);
+  });
   $('clearText').addEventListener('click',()=>{if(selected()){$('text').value='';updateSelected();}});
   const removeLineBreaks = value => value.replace(/\r?\n/g,' ').replace(/[ \t]{2,}/g,' ').trim();
   $('removeNewlines').addEventListener('click',()=>{
