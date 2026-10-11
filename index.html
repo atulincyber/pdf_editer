@@ -23,8 +23,18 @@ main { display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:calc(
 .viewer { padding:16px; min-width:0; }
 .toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
 .status { color:#5e6879; font-size:12px; margin-left:auto; }
-.stage-wrap { overflow:auto; background:#e7ebf2; border:1px solid #d5dbe5; border-radius:10px; height:calc(100dvh - 260px); min-height:240px; max-height:calc(100dvh - 220px); padding:16px; display:flex; justify-content:center; align-items:flex-start; box-sizing:border-box; }
-#stage { position:relative; background:white; box-shadow:0 3px 18px #18243b24; line-height:0; flex:none; }
+.mini-preview-wrap { position:sticky; z-index:20; top:8px; left:8px; display:flex; align-items:flex-start; gap:6px; margin:0 0 12px 0; width:max-content; max-width:100%; height:auto; overflow:visible; }
+.mini-preview-wrap[hidden] { display:none !important; }
+#miniPreview { display:flex; align-items:center; gap:7px; padding:4px 7px 4px 4px; background:#ffffffed; box-shadow:0 2px 8px #18243b20; border:1px solid #cbd3df; border-radius:8px; cursor:pointer; text-align:left; max-width:190px; }
+#miniPreview:hover:not(:disabled) { border-color:var(--blue); background:#f5f9ff; }
+#miniPreview:disabled { opacity:.55; cursor:not-allowed; }
+.mini-preview-close { position:relative; z-index:21; align-self:flex-start; border:1px solid #cbd3df; background:#fff; color:#334155; font-size:16px; font-weight:700; line-height:1; padding:3px 5px; min-width:24px; min-height:24px; border-radius:5px; cursor:pointer; pointer-events:auto; }
+.mini-preview-close:hover { background:#e8edf5; color:#172033; }
+#miniPreviewCanvas { display:block; width:38px; height:49px; object-fit:contain; background:#eef1f6; border:1px solid #d5dbe5; }
+.mini-preview-copy { display:flex; flex-direction:column; gap:2px; font-size:11px; line-height:1.25; }
+.mini-preview-copy strong { font-size:11px; }
+.stage-wrap { position:relative; overflow:auto; background:#e7ebf2; border:1px solid #d5dbe5; border-radius:10px; height:calc(100dvh - 260px); min-height:240px; max-height:calc(100dvh - 220px); padding:8px 16px 16px; display:block; box-sizing:border-box; }
+#stage { position:relative; background:white; box-shadow:0 3px 18px #18243b24; line-height:0; width:max-content; margin:0 auto; }
 #pdfCanvas { display:block; }
 #overlay { position:absolute; inset:0; cursor:crosshair; touch-action:none; }
 .box { position:absolute; border:2px solid #1769e0; background:#1769e015; box-sizing:border-box; line-height:1.25; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; color:#111; }
@@ -42,7 +52,7 @@ aside p { color:#5e6879; font-size:12px; }
 #empty h2 { color:#172033; }
 #file { display:none; }
 footer { color:#697386; font-size:11px; margin-top:12px; }
-@media(max-width:850px) { main { grid-template-columns:1fr; } aside { border-left:0; border-top:1px solid var(--border); } .stage-wrap { height:52dvh; min-height:220px; max-height:60dvh; padding:8px; } }
+@media(max-width:850px) { main { grid-template-columns:1fr; } aside { border-left:0; border-top:1px solid var(--border); } .stage-wrap { height:52dvh; min-height:220px; max-height:60dvh; padding:132px 8px 8px; } }
 </style>
 </head>
 <body>
@@ -75,6 +85,13 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     <span class="status" id="status">Open a PDF to begin.</span>
   </div>
   <div class="stage-wrap">
+    <div id="miniPreviewWrap" class="mini-preview-wrap">
+      <button id="miniPreview" type="button" disabled title="Click to fit the current PDF page to the available width">
+        <canvas id="miniPreviewCanvas" width="96" height="124"></canvas>
+        <span class="mini-preview-copy"><strong>Page preview</strong><span>Click to fit page to width</span></span>
+      </button>
+      <button id="closeMiniPreview" class="mini-preview-close" type="button" title="Remove mini preview" aria-label="Remove mini preview">×</button>
+    </div>
     <div id="empty">
       <h2>Open a PDF to get started</h2>
       Draw a rectangle where the new text should appear. Select the rectangle to edit its text and formatting, then download a new PDF.
@@ -185,7 +202,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   const $ = id => document.getElementById(id);
   const fileInput=$('file'), stage=$('stage'), empty=$('empty'), canvas=$('pdfCanvas'), overlay=$('overlay');
   const ctx=canvas.getContext('2d');
-  const state={pdfjs:null, originalBytes:null, fileName:'edited.pdf', page:1, pageCount:0, scale:1, zoom:1, fitScale:1, viewport:null, boxes:[], selectedId:null, drawing:null, pendingChar:null, nextId:1, renderToken:0, renderTask:null};
+  const state={pdfjs:null, originalBytes:null, fileName:'edited.pdf', page:1, pageCount:0, scale:1, zoom:1, fitScale:1, fitWidthScale:1, viewport:null, boxes:[], selectedId:null, drawing:null, pendingChar:null, nextId:1, renderToken:0, renderTask:null, miniPreviewShowingWidth:false, zoomBeforeMiniFit:1};
   const controls=['text','fontFamily','fontSize','align','bold','italic','ink','lineHeight','padding','fitText','clearText','deleteBox','removeNewlines','keepLineBreaks'];
   const setStatus=s=>$('status').textContent=s;
   const selected=()=>state.boxes.find(b=>b.id===state.selectedId);
@@ -201,10 +218,10 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       state.originalBytes=await file.arrayBuffer();
       state.fileName=file.name.replace(/\.pdf$/i,'')+'_edited.pdf';
       state.pdfjs=await pdfjsLib.getDocument({data:new Uint8Array(state.originalBytes.slice(0))}).promise;
-      state.pageCount=state.pdfjs.numPages; state.page=1; state.zoom=1; state.scale=1; state.fitScale=1; state.boxes=[]; state.selectedId=null; state.nextId=1;
+      state.pageCount=state.pdfjs.numPages; state.page=1; state.zoom=1; state.zoomBeforeMiniFit=1; state.miniPreviewShowingWidth=false; state.scale=1; state.fitScale=1; state.boxes=[]; state.selectedId=null; state.nextId=1;
       empty.hidden=true; stage.hidden=false;
       $('pageCount').textContent=state.pageCount;
-      ['prev','next','zoomOut','zoomIn','download','pageRange','goPage'].forEach(id=>$(id).disabled=false);
+      ['prev','next','zoomOut','zoomIn','download','pageRange','goPage','miniPreview'].forEach(id=>$(id).disabled=false);
       enableEditor(false); updateNav(); await renderPage(); setStatus('PDF ready. Drag on the page to draw a text box.');
     } catch(err) { console.error(err); setStatus('Could not open PDF: '+err.message); alert('Could not open this PDF. It may be password-protected or unsupported.\\n\\n'+err.message); }
   });
@@ -230,7 +247,8 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     const padY=(parseFloat(css.paddingTop)||0)+(parseFloat(css.paddingBottom)||0);
     const availableWidth=Math.max(120,wrap.clientWidth-padX-28);
     const availableHeight=Math.max(160,wrap.clientHeight-padY-28);
-    state.fitScale=Math.min(availableWidth/baseViewport.width, availableHeight/baseViewport.height);
+    state.fitWidthScale=availableWidth/baseViewport.width;
+    state.fitScale=Math.min(state.fitWidthScale, availableHeight/baseViewport.height);
     state.scale=state.fitScale*state.zoom;
     const viewport=page.getViewport({scale:state.scale});
     state.viewport=viewport;
@@ -248,8 +266,30 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     }finally{if(state.renderTask===task)state.renderTask=null;}
     if(token!==state.renderToken)return;
     drawBoxes();
+    await renderMiniPreview(page, baseViewport, token);
+    if(token!==state.renderToken)return;
     const zoomLabel=$('zoomLabel'); if(zoomLabel)zoomLabel.textContent=Math.round(state.zoom*100)+'%';
     updateNav(); setStatus('Page ready.');
+  }
+
+  async function renderMiniPreview(page, baseViewport, token){
+    const mini=$('miniPreviewCanvas');
+    const maxW=60, maxH=78;
+    const scale=Math.min(maxW/baseViewport.width, maxH/baseViewport.height);
+    const vp=page.getViewport({scale});
+    const dpr=window.devicePixelRatio||1;
+    mini.width=Math.max(1,Math.floor(vp.width*dpr));
+    mini.height=Math.max(1,Math.floor(vp.height*dpr));
+    mini.style.width=Math.round(vp.width)+'px';
+    mini.style.height=Math.round(vp.height)+'px';
+    const miniCtx=mini.getContext('2d');
+    miniCtx.setTransform(1,0,0,1,0,0);
+    miniCtx.clearRect(0,0,mini.width,mini.height);
+    miniCtx.fillStyle='#ffffff';
+    miniCtx.fillRect(0,0,mini.width,mini.height);
+    const task=page.render({canvasContext:miniCtx,viewport:vp,transform:dpr!==1?[dpr,0,0,dpr,0,0]:null});
+    try{await task.promise;}catch(err){if(err && err.name==='RenderingCancelledException')return;throw err;}
+    if(token!==state.renderToken)return;
   }
 
   function drawBoxes(){
@@ -398,6 +438,29 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   $('prev').addEventListener('click',async()=>{if(state.page>1){state.page--;selectBox(null);await renderPage();}});
   $('next').addEventListener('click',async()=>{if(state.page<state.pageCount){state.page++;selectBox(null);await renderPage();}});
   $('zoomIn').addEventListener('click',async()=>{state.zoom=Math.min(4,state.zoom*1.15);await renderPage();});
+  function closeMiniPreview(e){
+    if(e){e.preventDefault(); e.stopPropagation();}
+    const wrap=$('miniPreviewWrap');
+    if(wrap){wrap.hidden=true; wrap.style.display='none';}
+  }
+  $('closeMiniPreview').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();});
+  $('closeMiniPreview').addEventListener('click',closeMiniPreview);
+  $('closeMiniPreview').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){closeMiniPreview(e);}});
+  $('miniPreview').addEventListener('click',async()=>{
+    if(!state.pdfjs)return;
+    if(!state.miniPreviewShowingWidth){
+      state.zoomBeforeMiniFit=state.zoom;
+      state.zoom=Math.max(.35,Math.min(4,state.fitWidthScale/state.fitScale));
+      state.miniPreviewShowingWidth=true;
+      await renderPage();
+      setStatus('Page fitted to available width. Click the thumbnail again to restore the previous view.');
+    }else{
+      state.zoom=state.zoomBeforeMiniFit;
+      state.miniPreviewShowingWidth=false;
+      await renderPage();
+      setStatus('Restored previous page view.');
+    }
+  });
   $('zoomOut').addEventListener('click',async()=>{state.zoom=Math.max(.35,state.zoom/1.15);await renderPage();});
   let resizeTimer;
   window.addEventListener('resize',()=>{
