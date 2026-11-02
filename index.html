@@ -37,8 +37,10 @@ main { display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:calc(
 #stage { position:relative; background:white; box-shadow:0 3px 18px #18243b24; line-height:0; width:max-content; margin:0 auto; }
 #pdfCanvas { display:block; }
 #overlay { position:absolute; inset:0; cursor:crosshair; touch-action:none; }
-.box { position:absolute; border:2px solid #1769e0; background:#1769e015; box-sizing:border-box; line-height:1.25; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; color:#111; }
+.box { position:absolute; border:2px solid transparent; background:transparent; box-sizing:border-box; line-height:1.25; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; color:#111; }
 .box.selected { border:2px solid #e34b32; background:#e34b3210; outline:1px dashed #e34b32; }
+.box[contenteditable="true"] { cursor:text; outline:1px dashed #e34b32; user-select:text; -webkit-user-select:text; white-space:pre-wrap !important; tab-size:4; }
+.box[contenteditable="true"]:empty::before { content:attr(data-placeholder); color:#94a3b8; pointer-events:none; }
 aside { background:white; border-left:1px solid var(--border); padding:18px; }
 aside h2 { margin:0 0 8px; font-size:16px; }
 aside p { color:#5e6879; font-size:12px; }
@@ -46,13 +48,173 @@ aside p { color:#5e6879; font-size:12px; }
 .field label { font-size:12px; font-weight:650; color:#38445a; }
 .inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .inline .field { flex:1; min-width:80px; }
-#text { width:100%; min-height:110px; resize:vertical; }
 .notice { background:#f0f6ff; border:1px solid #d4e5ff; border-radius:8px; padding:10px; font-size:12px; color:#24466f; margin-top:14px; }
 #empty { text-align:center; max-width:460px; margin:auto; color:#5e6879; line-height:1.5; }
 #empty h2 { color:#172033; }
 #file { display:none; }
 footer { color:#697386; font-size:11px; margin-top:12px; }
 @media(max-width:850px) { main { grid-template-columns:1fr; } aside { border-left:0; border-top:1px solid var(--border); } .stage-wrap { height:52dvh; min-height:220px; max-height:60dvh; padding:132px 8px 8px; } }
+
+/* Full-width layout: keep every editing tool at the top and the PDF preview below. */
+main {
+  display:flex !important;
+  flex-direction:column !important;
+  min-height:calc(100vh - 66px);
+}
+.viewer {
+  order:2;
+  width:100%;
+  padding:16px 20px 22px;
+}
+aside {
+  order:1;
+  width:100%;
+  border-left:0;
+  border-bottom:1px solid var(--border);
+  padding:14px 20px 16px;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px 14px;
+  align-items:start;
+}
+aside #jpgTools,
+aside > h2,
+aside > p,
+aside #selectionHelp {
+  grid-column:1 / -1;
+}
+aside #jpgTools { margin-bottom:4px !important; }
+aside > h2 { margin:2px 0 0; }
+aside > p { margin:0; }
+aside > .field { min-width:0; margin:4px 0; }
+aside > .inline { min-width:0; grid-column:span 2; align-self:center; }
+aside #specialChars { grid-column:span 2; }
+aside #cleanPreviewWrap { max-width:520px; }
+.stage-wrap {
+  width:100%;
+  height:72vh;
+  min-height:420px;
+  max-height:none;
+  padding:12px 18px 18px;
+}
+@media(max-width:900px) {
+  aside { grid-template-columns:repeat(2,minmax(0,1fr)); padding:12px; }
+  aside > .inline, aside #specialChars { grid-column:span 2; }
+  .viewer { padding:12px; }
+  .stage-wrap { height:65vh; min-height:320px; padding:112px 8px 8px; }
+}
+@media(max-width:520px) {
+  aside { grid-template-columns:1fr; }
+  aside > .inline, aside #specialChars { grid-column:1 / -1; }
+  .stage-wrap { height:58vh; min-height:280px; }
+}
+
+/* Compact, pinned tool panel: keep controls visible while scrolling the PDF preview. */
+@media (min-width: 521px) {
+  aside {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    max-height: 48vh;
+    overflow-y: auto;
+    padding: 7px 14px 8px;
+    gap: 4px 10px;
+    background: #fff;
+    box-shadow: 0 3px 10px #18243b12;
+  }
+  aside #jpgTools { padding: 7px 9px !important; margin: 0 0 2px !important; }
+  aside #jpgTools h2 { margin: 0 0 2px !important; }
+  aside #jpgTools p { margin: 0 0 4px !important; }
+  aside .field { margin: 2px 0 !important; gap: 3px; }
+  aside > h2 { margin: 0 !important; }
+  aside > .field { margin: 2px 0 !important; }
+}
+@media (max-width: 520px) {
+  aside {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    max-height: 52vh;
+    overflow-y: auto;
+    padding: 7px 10px !important;
+    gap: 4px !important;
+    background: #fff;
+    box-shadow: 0 3px 10px #18243b12;
+  }
+  aside #jpgTools { padding: 7px !important; margin: 0 !important; }
+}
+
+/* Horizontal compact tool cards: arrange controls left-to-right in small boxes. */
+aside {
+  display:flex !important;
+  flex-direction:row !important;
+  flex-wrap:wrap !important;
+  align-items:stretch !important;
+  gap:6px !important;
+  padding:7px 12px 9px !important;
+  max-height:42vh !important;
+  overflow-y:auto !important;
+}
+aside > h2, aside > p, aside #selectionHelp {
+  flex:0 0 auto !important;
+  align-self:center !important;
+  margin:0 4px 0 0 !important;
+  padding:5px 8px !important;
+  border:1px solid var(--border);
+  border-radius:7px;
+  background:#f8faff;
+}
+aside #jpgTools {
+  flex:1 1 100% !important;
+  display:flex !important;
+  flex-direction:row !important;
+  flex-wrap:wrap !important;
+  align-items:center !important;
+  gap:6px 10px !important;
+  padding:6px 8px !important;
+  margin:0 !important;
+  border-radius:8px !important;
+}
+aside #jpgTools h2 { flex:0 0 auto; font-size:13px; margin:0 !important; }
+aside #jpgTools p { display:none !important; }
+aside #jpgTools .field { flex:0 1 150px; min-width:110px; margin:0 !important; padding:5px 7px; border:1px solid var(--border); border-radius:7px; background:#fff; }
+aside #jpgTools .inline { flex:0 0 auto; gap:5px; }
+aside #jpgTools > button { width:auto !important; margin:0 !important; padding:6px 9px; }
+aside #cleanPreviewWrap { flex:1 1 100%; max-width:100% !important; }
+aside > .field, aside > .inline {
+  flex:0 1 auto !important;
+  min-width:0 !important;
+  align-self:stretch !important;
+  margin:0 !important;
+  padding:6px 8px !important;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:#fff;
+  gap:5px !important;
+}
+aside > .field { min-width:130px !important; }
+aside > .field:has(#specialChars) { flex:1 1 220px !important; }
+aside > .inline { flex-wrap:wrap; }
+aside > .inline .field { margin:0 !important; min-width:95px; }
+aside #specialChars { display:flex; flex-wrap:wrap; gap:3px; }
+aside #specialChars button { min-width:27px; padding:3px 6px; }
+aside .field label { font-size:11px; }
+aside input, aside select { padding:4px 6px; }
+aside button { padding:5px 8px; font-size:12px; }
+aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:has(#fitText) { flex:0 1 auto !important; }
+.viewer { padding-top:10px !important; }
+@media (min-width:521px) {
+  aside { position:sticky; top:0; z-index:50; }
+}
+@media (max-width:700px) {
+  aside { max-height:48vh !important; padding:6px !important; }
+  aside #jpgTools .field { flex:1 1 145px; }
+}
+@media (max-width:520px) {
+  aside { max-height:55vh !important; }
+  aside > .field, aside > .inline { flex:1 1 145px !important; }
+}
+
 </style>
 </head>
 <body>
@@ -61,13 +223,13 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     <h1>Local PDF Text Editor</h1>
     <div class="sub">First test · files stay in your browser</div>
   </div>
-  <label class="file-label" for="file">Open PDF…</label>
+  <label class="file-label" for="file">Open PDF</label>
   <input id="file" type="file" accept="application/pdf,.pdf">
   <label style="display:flex;align-items:center;gap:6px;font-size:12px">
-    Pages to download
+    Pages
     <input id="pageRange" type="text" placeholder="e.g. 5 or 1-3, 5, 8-10" style="width:180px" disabled>
   </label>
-  <button id="download" class="primary" disabled>Download edited PDF</button>
+  <button id="download" class="primary" disabled>Save PDF</button>
 </header>
 <main>
 <section class="viewer">
@@ -81,10 +243,16 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     <button id="zoomOut" disabled>−</button>
     <span id="zoomLabel">100%</span>
     <button id="zoomIn" disabled>+</button>
-    <button id="deleteBox" disabled>Delete selected box</button>
+    <button id="deleteBox" disabled>Delete box</button>
     <span class="status" id="status">Open a PDF to begin.</span>
   </div>
   <div class="stage-wrap">
+    <div id="whiteBgPreviewControls" aria-label="PDF background cleaning controls" style="position:sticky;top:8px;z-index:30;width:max-content;max-width:calc(100% - 12px);margin:0 8px 8px auto;padding:7px 10px;background:#ffffffed;border:1px solid #cbd3df;border-radius:9px;box-shadow:0 2px 8px #18243b20;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;white-space:nowrap"><input type="checkbox" id="pureWhiteBg" checked> Pure white</label>
+      <label for="whiteThreshold" style="font-size:12px;white-space:nowrap">Threshold</label>
+      <input id="whiteThreshold" type="range" min="130" max="245" value="190" style="width:130px;max-width:28vw;padding:0">
+      <small id="whiteThresholdLabel" style="font-size:11px;min-width:28px">190</small>
+    </div>
     <div id="miniPreviewWrap" class="mini-preview-wrap">
       <button id="miniPreview" type="button" disabled title="Click to fit the current PDF page to the available width">
         <canvas id="miniPreviewCanvas" width="96" height="124"></canvas>
@@ -103,24 +271,32 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       <div id="overlay"></div>
     </div>
   </div>
-  <footer>Tip: draw a rectangle by dragging. Click an existing rectangle to select it. Coordinates and preview adjust with zoom.</footer>
+  <footer>Tip: draw a rectangle by dragging. Click an existing rectangle to select it. </footer>
 </section>
 <aside>
-  <h2>Text box settings</h2>
-  <p id="selectionHelp">Draw a rectangle on the PDF to add a text box.</p>
-  <div class="field">
-    <label for="text">Text</label>
-    <textarea id="text" placeholder="Select a box, then type your text…" disabled></textarea>
-    <div class="inline" style="align-items:center;gap:10px;flex-wrap:wrap">
-      <button type="button" id="removeNewlines" disabled>Remove line breaks</button>
-      <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap">
-        <input type="checkbox" id="keepLineBreaks" disabled>
-        Keep line breaks
-      </label>
+  <div id="jpgTools" style="border:1px solid #cbd3df;border-radius:10px;padding:12px;margin:0 0 18px;background:#f8faff">
+    <h2 style="margin:0 0 6px">JPG</h2>
+
+    <div class="field">
+      <label for="jpgQuality">Quality</label>
+      <select id="jpgQuality"><option value="0.95">High</option><option value="0.90" selected>Balanced</option><option value="0.80">Small</option></select>
+    </div>
+    <div class="inline">
+      <button type="button" id="previewClean" disabled>Preview</button>
+      <button type="button" id="downloadCurrentJpg" disabled class="primary">This page JPG</button>
+    </div>
+    <button type="button" id="downloadAllJpg" disabled style="width:100%;margin-top:8px">All pages JPG</button>
+    <div id="cleanPreviewWrap" hidden style="margin-top:12px">
+      <div class="inline" style="justify-content:space-between"><strong style="font-size:12px">Preview</strong><button type="button" id="closeCleanPreview">×</button></div>
+      <canvas id="cleanPreviewCanvas" style="display:block;width:100%;height:auto;border:1px solid #cbd3df;border-radius:6px;margin-top:6px"></canvas>
+      <small style="color:#5e6879">Original PDF unchanged.</small>
     </div>
   </div>
+
+  <h2>Text</h2>
+  <p id="selectionHelp">Draw box to add text.</p>
   <div class="field">
-    <label for="fontFamily">Font family</label>
+    <label for="fontFamily">Font</label>
     <select id="fontFamily" disabled>
       <option value="Helvetica">Helvetica (sans-serif)</option>
       <option value="TimesRoman">Times Roman (serif)</option>
@@ -129,7 +305,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     </select>
   </div>
   <div class="field">
-    <label>Insert special character</label>
+    <label>Symbols</label>
     <div class="inline" id="specialChars">
       <button type="button" data-char="©">©</button>
       <button type="button" data-char="®">®</button>
@@ -153,13 +329,13 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   </div>
   <div class="inline">
     <div class="field">
-      <label for="fontSize">Font size (pt)</label>
+      <label for="fontSize">Size (pt)</label>
       <input id="fontSize" type="number" min="4" max="72" step="0.5" value="8" disabled>
     </div>
     <div class="field">
-      <label for="align">Alignment</label>
+      <label for="align">Align</label>
       <select id="align" disabled>
-        <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify (preview left)</option>
+        <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option>
       </select>
     </div>
   </div>
@@ -173,21 +349,18 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   </div>
   <div class="inline">
     <div class="field">
-      <label for="lineHeight">Line spacing</label>
-      <input id="lineHeight" type="number" min="0.8" max="2.5" step="0.05" value="1.15" disabled>
-    </div>
-    <div class="field">
-      <label for="padding">Inner padding (pt)</label>
+      <label for="padding">Padding</label>
       <input id="padding" type="number" min="0" max="20" step="0.5" value="1" disabled>
     </div>
   </div>
   <div class="inline">
-    <button id="fitText" disabled>Fit text to box</button>
-    <button id="clearText" disabled>Clear text</button>
+    <button id="fitText" disabled>Fit</button>
+    <button id="clearText" disabled>Clear</button>
     <button id="deleteBoxSide" type="button" disabled>Delete</button>
   </div>
-  
-  
+
+
+
 </aside>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -203,12 +376,12 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   const $ = id => document.getElementById(id);
   const fileInput=$('file'), stage=$('stage'), empty=$('empty'), canvas=$('pdfCanvas'), overlay=$('overlay');
   const ctx=canvas.getContext('2d');
-  const state={pdfjs:null, originalBytes:null, fileName:'edited.pdf', page:1, pageCount:0, scale:1, zoom:1, fitScale:1, fitWidthScale:1, viewport:null, boxes:[], selectedId:null, drawing:null, pendingChar:null, nextId:1, renderToken:0, renderTask:null, miniPreviewShowingWidth:false, zoomBeforeMiniFit:1};
-  const controls=['text','fontFamily','fontSize','align','bold','italic','ink','lineHeight','padding','fitText','clearText','deleteBox','deleteBoxSide','removeNewlines','keepLineBreaks'];
+  const state={pdfjs:null, originalBytes:null, fileName:'edited.pdf', page:1, pageCount:0, scale:1, zoom:1, fitScale:1, fitWidthScale:1, viewport:null, boxes:[], selectedId:null, drawing:null, pendingChar:null, nextId:1, renderToken:0, renderTask:null, basePreviewImageData:null, miniPreviewShowingWidth:false, zoomBeforeMiniFit:1};
+  const controls=['fontFamily','fontSize','align','bold','italic','ink','padding','fitText','clearText','deleteBox','deleteBoxSide'];
   const setStatus=s=>$('status').textContent=s;
   const selected=()=>state.boxes.find(b=>b.id===state.selectedId);
   const pageBoxes=()=>state.boxes.filter(b=>b.page===state.page);
-  const enableEditor=on=>controls.forEach(id=>$(id).disabled=!on);
+  const enableEditor=on=>controls.forEach(id=>{const el=$(id); if(el) el.disabled=!on;});
   const hexRgb=hex=>({r:parseInt(hex.slice(1,3),16)/255,g:parseInt(hex.slice(3,5),16)/255,b:parseInt(hex.slice(5,7),16)/255});
   const previewFont=name=>({TimesRoman:'Georgia, serif',Courier:'Courier New, monospace',Unicode:'Arial, sans-serif'}[name]||'Arial, sans-serif');
 
@@ -222,7 +395,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       state.pageCount=state.pdfjs.numPages; state.page=1; state.zoom=1; state.zoomBeforeMiniFit=1; state.miniPreviewShowingWidth=false; state.scale=1; state.fitScale=1; state.boxes=[]; state.selectedId=null; state.nextId=1;
       empty.hidden=true; stage.hidden=false;
       $('pageCount').textContent=state.pageCount;
-      ['prev','next','zoomOut','zoomIn','download','pageRange','goPage','miniPreview'].forEach(id=>$(id).disabled=false);
+      ['prev','next','zoomOut','zoomIn','download','pageRange','goPage','miniPreview','previewClean','downloadCurrentJpg','downloadAllJpg'].forEach(id=>{const el=$(id); if(el) el.disabled=false;});
       enableEditor(false); updateNav(); await renderPage(); setStatus('PDF ready. Drag on the page to draw a text box.');
     } catch(err) { console.error(err); setStatus('Could not open PDF: '+err.message); alert('Could not open this PDF. It may be password-protected or unsupported.\\n\\n'+err.message); }
   });
@@ -266,6 +439,10 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       throw err;
     }finally{if(state.renderTask===task)state.renderTask=null;}
     if(token!==state.renderToken)return;
+    // Keep an untouched copy of the rendered page so every slider movement
+    // recalculates from the original pixels rather than stacking filters.
+    state.basePreviewImageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+    applyWhiteFilterToPdfPreview();
     drawBoxes();
     await renderMiniPreview(page, baseViewport, token);
     if(token!==state.renderToken)return;
@@ -301,7 +478,28 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       Object.assign(el.style,{left:(b.x*s)+'px',top:(b.y*s)+'px',width:(b.w*s)+'px',height:(b.h*s)+'px',fontSize:(b.fontSize*s)+'px',fontWeight:b.bold?'700':'400',fontStyle:b.italic?'italic':'normal',fontFamily:previewFont(b.fontFamily),textAlign:b.align==='justify'?'left':b.align,color:b.color,lineHeight:b.lineHeight});
       el.style.padding=(b.padding*s)+'px';
       el.textContent=b.text;
-      el.addEventListener('pointerdown',e=>{e.stopPropagation(); selectBox(b.id);});
+      el.dataset.placeholder='Type here…';
+      const isSelected=b.id===state.selectedId;
+      el.contentEditable=isSelected?'true':'false';
+      el.spellcheck=false;
+      el.setAttribute('aria-label','PDF text box. Type directly here.');
+      el.addEventListener('pointerdown',e=>{
+        e.stopPropagation();
+        if(state.selectedId!==b.id){
+          selectBox(b.id);
+          const id=b.id;
+          requestAnimationFrame(()=>{
+            const active=overlay.querySelector('.box.selected[contenteditable="true"]');
+            if(active && state.selectedId===id){active.focus();const range=document.createRange();range.selectNodeContents(active);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}
+          });
+        }
+      });
+      el.addEventListener('input',()=>{
+        if(state.selectedId!==b.id)return;
+        // Do not trim, collapse, or rewrite whitespace during typing.
+        // pre-wrap CSS plus innerText preserves consecutive and trailing spaces.
+        b.text=el.innerText.replace(/\r/g,'');
+      });
       overlay.appendChild(el);
     }
     if(state.drawing){
@@ -330,7 +528,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       $('specialChars').querySelectorAll('button[data-char]').forEach(btn=>btn.classList.remove('armed'));
       overlay.classList.remove('place-character');
       selectBox(b.id); drawBoxes();
-      setStatus('Special character placed. Adjust its font size in Text box settings.');
+      setStatus('Special character placed. Adjust its font size in Text.');
       e.preventDefault();
       return;
     }
@@ -349,24 +547,25 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     const r=state.drawing; state.drawing=null;
     if(r.w<8||r.h<8){drawBoxes();return;}
     const b={id:state.nextId++,page:state.page,x:r.x/state.scale,y:r.y/state.scale,w:r.w/state.scale,h:r.h/state.scale,text:'',fontFamily:'Helvetica',fontSize:8,bold:false,italic:false,align:'left',color:'#111111',lineHeight:1.15,padding:1};
-    state.boxes.push(b); selectBox(b.id); drawBoxes(); setStatus('Text box created. Type in the settings panel.');
+    state.boxes.push(b); selectBox(b.id); drawBoxes(); setStatus('Text box created. Type directly inside the selected box.');
   });
 
   function selectBox(id){
     state.selectedId=id; const b=selected(); enableEditor(!!b);
-    $('selectionHelp').textContent=b?`Selected box ${b.id} · page ${b.page} · ${b.w.toFixed(1)} × ${b.h.toFixed(1)} pt`:'Draw a rectangle on the PDF to add a text box.';
+    $('selectionHelp').textContent=b?`Selected box ${b.id} · page ${b.page} · ${b.w.toFixed(1)} × ${b.h.toFixed(1)} pt`:'Select a box and type directly inside it.';
     if(b){
-      $('text').value=b.text; $('fontFamily').value=b.fontFamily||'Helvetica'; $('fontSize').value=b.fontSize; $('align').value=b.align; $('bold').checked=b.bold; $('italic').checked=!!b.italic; $('ink').value=b.color; $('lineHeight').value=b.lineHeight; $('padding').value=b.padding;
-    } else { $('text').value=''; }
-    $('deleteBox').disabled=!b; $('deleteBoxSide').disabled = !b; $('deleteBoxSide').disabled=!b; $('fitText').disabled=!b; $('clearText').disabled=!b; drawBoxes();
+      $('fontFamily').value=b.fontFamily||'Helvetica'; $('fontSize').value=b.fontSize; $('align').value=b.align; $('bold').checked=b.bold; $('italic').checked=!!b.italic; $('ink').value=b.color; $('padding').value=b.padding;
+    }
+    ['deleteBox','deleteBoxSide','fitText','clearText'].forEach(id=>{const el=$(id); if(el) el.disabled=!b;}); drawBoxes();
+    if(b) requestAnimationFrame(()=>{const el=overlay.querySelector('.box.selected[contenteditable="true"]');if(el && state.selectedId===b.id){el.focus();const range=document.createRange();range.selectNodeContents(el);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}});
   }
   function updateSelected(){
     const b=selected(); if(!b)return;
-    b.text=$('text').value; b.fontFamily=$('fontFamily').value; b.fontSize=Math.max(4,Math.min(72,Number($('fontSize').value)||12)); b.align=$('align').value; b.bold=$('bold').checked; b.italic=$('italic').checked; b.color=$('ink').value; b.lineHeight=Math.max(.8,Math.min(2.5,Number($('lineHeight').value)||1.15)); b.padding=Math.max(0,Math.min(20,Number($('padding').value)||0));
+    b.fontFamily=$('fontFamily').value; b.fontSize=Math.max(4,Math.min(72,Number($('fontSize').value)||12)); b.align=$('align').value; b.bold=$('bold').checked; b.italic=$('italic').checked; b.color=$('ink').value; b.lineHeight=1.15; b.padding=Math.max(0,Math.min(20,Number($('padding').value)||0));
     $('selectionHelp').textContent=`Selected box ${b.id} · page ${b.page} · ${b.w.toFixed(1)} × ${b.h.toFixed(1)} pt`;
     drawBoxes();
   }
-  ['fontFamily','fontSize','align','bold','italic','ink','lineHeight','padding'].forEach(id=>$(id).addEventListener('input',updateSelected));
+  ['fontFamily','fontSize','align','bold','italic','ink','padding'].forEach(id=>$(id).addEventListener('input',updateSelected));
   $('specialChars').addEventListener('click',e=>{
     const btn=e.target.closest('button[data-char]'); if(!btn)return;
     if(!state.pdfjs){setStatus('Open a PDF first, then choose a special character.');return;}
@@ -397,12 +596,10 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     state.boxes = state.boxes.filter(box => box.id !== selectedBox.id);
     state.selectedId = null;
 
-    const textInput = $('text');
-    if (textInput) textInput.value = '';
     enableEditor(false);
 
     const help = $('selectionHelp');
-    if (help) help.textContent = 'Draw a rectangle on the PDF to add a text box.';
+    if (help) help.textContent = 'Select a box and type directly inside it.';
 
     // Redraw immediately so the selected rectangle disappears from the preview.
     drawBoxes();
@@ -425,28 +622,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     event.preventDefault();
     deleteSelectedBox(event);
   });
-  $('clearText').addEventListener('click',()=>{if(selected()){$('text').value='';updateSelected();}});
-  const removeLineBreaks = value => value.replace(/\r?\n/g,' ').replace(/[ \t]{2,}/g,' ').trim();
-  $('removeNewlines').addEventListener('click',()=>{
-    if(!selected())return;
-    $('text').value=removeLineBreaks($('text').value);
-    updateSelected();
-  });
-  // By default, pasted/typed line breaks are removed. Tick "Keep line breaks" to preserve them.
-  $('text').addEventListener('input',()=>{
-    if(!$('keepLineBreaks').checked && /\r?\n/.test($('text').value)){
-      const field=$('text'), pos=field.selectionStart;
-      field.value=removeLineBreaks(field.value);
-      field.selectionStart=field.selectionEnd=Math.min(pos,field.value.length);
-    }
-    updateSelected();
-  });
-  $('keepLineBreaks').addEventListener('change',()=>{
-    if(!$('keepLineBreaks').checked && selected()){
-      $('text').value=removeLineBreaks($('text').value);
-      updateSelected();
-    }
-  });
+  $('clearText').addEventListener('click',()=>{const b=selected();if(b){b.text='';drawBoxes();}});
   $('fitText').addEventListener('click',()=>{
     const b=selected();if(!b||!b.text)return;
     let fs=b.fontSize;
@@ -460,7 +636,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
     return result;
   }
   function updateNav(){
-    $('prev').disabled=state.page<=1; $('next').disabled=state.page>=state.pageCount;
+    if($('prev')) $('prev').disabled=state.page<=1; if($('next')) $('next').disabled=state.page>=state.pageCount;
     $('goPage').value=state.page; $('goPage').max=state.pageCount; $('pageCount').textContent=state.pageCount;
   }
   function goToPageFromInput(){
@@ -528,7 +704,7 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
   $('download').addEventListener('click',async()=>{
     if(!state.originalBytes)return;
     try{
-      setStatus('Building edited PDF…'); $('download').disabled=true;
+      setStatus('Building edited PDF…'); if($('download')) $('download').disabled=true;
       const {PDFDocument,StandardFonts,rgb}=PDFLib;
       const sourcePdf=await PDFDocument.load(state.originalBytes.slice(0));
       const totalPages=sourcePdf.getPageCount();
@@ -550,9 +726,31 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       }
       const chosenPages=parsePageRange(rangeText,totalPages);
       const pdf=await PDFDocument.create();
-      const copied=await pdf.copyPages(sourcePdf,chosenPages.map(n=>n-1));
-      copied.forEach(pg=>pdf.addPage(pg));
-      const outputIndexByOriginalPage=new Map(chosenPages.map((n,i)=>[n,i]));
+      const outputIndexByOriginalPage=new Map();
+      if($('pureWhiteBg') && $('pureWhiteBg').checked){
+        // To make the white-paper filter part of the saved PDF (not just the JPG
+        // or on-screen preview), rasterize each selected page, whiten its paper,
+        // and place that processed page image into the output PDF. Added text
+        // boxes are drawn afterwards as normal PDF text overlays.
+        const filterThreshold=Number($('whiteThreshold').value)||190;
+        for(let i=0;i<chosenPages.length;i++){
+          const originalPageNo=chosenPages[i];
+          setStatus('Applying white background to PDF page '+originalPageNo+' of '+chosenPages.length+'…');
+          const rendered=await renderPageToImage(originalPageNo,1.6);
+          const cleaned=makePaperPureWhite(rendered,filterThreshold);
+          const pngBytes=await new Promise((resolve,reject)=>cleaned.toBlob(blob=>{
+            if(!blob){reject(new Error('Could not prepare cleaned page image.'));return;}
+            blob.arrayBuffer().then(buf=>resolve(new Uint8Array(buf))).catch(reject);
+          },'image/png'));
+          const embedded=await pdf.embedPng(pngBytes);
+          const page=pdf.addPage([cleaned.width/1.6,cleaned.height/1.6]);
+          page.drawImage(embedded,{x:0,y:0,width:page.getWidth(),height:page.getHeight()});
+          outputIndexByOriginalPage.set(originalPageNo,i);
+        }
+      }else{
+        const copied=await pdf.copyPages(sourcePdf,chosenPages.map(n=>n-1));
+        copied.forEach((pg,i)=>{pdf.addPage(pg);outputIndexByOriginalPage.set(chosenPages[i],i);});
+      }
       const fontCache={};
       async function getFont(name,bold,italic=false,sampleText=''){
         const key=name+':'+(bold?'bold':'regular')+':'+(italic?'italic':'normal');
@@ -695,9 +893,193 @@ footer { color:#697386; font-size:11px; margin-top:12px; }
       const a=document.createElement('a');a.href=url;a.download=state.fileName;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
       setStatus('Download created. Your original PDF was not changed.');
     }catch(err){console.error(err);alert('Could not create PDF: '+err.message);setStatus('Export failed: '+err.message);}
-    finally{$('download').disabled=false;}
+    finally{if($('download')) $('download').disabled=false;}
   });
+
+  $('closeCleanPreview').addEventListener('click',()=>{$('cleanPreviewWrap').hidden=true;});
+  async function renderPageToImage(pageNumber, scale=1.6){
+    const page=await state.pdfjs.getPage(pageNumber);
+    const viewport=page.getViewport({scale});
+    const out=document.createElement('canvas');
+    out.width=Math.ceil(viewport.width); out.height=Math.ceil(viewport.height);
+    const c=out.getContext('2d',{willReadFrequently:true});
+    c.fillStyle='#fff'; c.fillRect(0,0,out.width,out.height);
+    await page.render({canvasContext:c,viewport,background:'rgb(255,255,255)'}).promise;
+    return out;
+  }
+  // Convert light paper pixels to exact white while retaining darker text and marks.
+  function makePaperPureWhite(source, threshold){
+    const out=document.createElement('canvas'); out.width=source.width; out.height=source.height;
+    const c=out.getContext('2d',{willReadFrequently:true}); c.drawImage(source,0,0);
+    const w=out.width,h=out.height,img=c.getImageData(0,0,w,h),d=img.data;
+    const cut=Math.max(0,Math.min(255,Number(threshold)||190));
+    for(let i=0;i<d.length;i+=4){
+      const y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+      if(y>=cut){d[i]=255;d[i+1]=255;d[i+2]=255;}
+    }
+    c.putImageData(img,0,0); return out;
+  }
+  // Apply the exact same paper-whitening filter to the visible PDF preview.
+  // Always start from the pristine page pixels so moving the slider in either
+  // direction updates the preview accurately without accumulating changes.
+  function applyWhiteFilterToPdfPreview(){
+    if(!state.basePreviewImageData || stage.hidden) return;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    const source=state.basePreviewImageData;
+    const image=ctx.createImageData(source.width,source.height);
+    image.data.set(source.data);
+    if($('pureWhiteBg').checked){
+      const cut=Number($('whiteThreshold').value)||190;
+      const d=image.data;
+      for(let i=0;i<d.length;i+=4){
+        const y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+        if(y>=cut){d[i]=255;d[i+1]=255;d[i+2]=255;}
+      }
+    }
+    ctx.putImageData(image,0,0);
+  }
+  const whiteThresholdInput=$('whiteThreshold');
+  if(whiteThresholdInput) whiteThresholdInput.addEventListener('input',()=>{
+    $('whiteThresholdLabel').textContent=whiteThresholdInput.value;
+    applyWhiteFilterToPdfPreview();
+  });
+  const pureWhiteInput=$('pureWhiteBg');
+  if(pureWhiteInput) pureWhiteInput.addEventListener('change',applyWhiteFilterToPdfPreview);
+
+  function downloadCanvasJpg(canvasEl,name,quality){
+    return new Promise(resolve=>canvasEl.toBlob(blob=>{
+      if(!blob){resolve(false);return;}
+      const url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),3000);resolve(true);
+    },'image/jpeg',quality));
+  }
+  function drawEditedBoxesOnCanvas(canvasEl,pageNo,renderScale=1.6){
+    const ctx=canvasEl.getContext('2d');
+    const pageBoxes=state.boxes.filter(b=>b.page===pageNo && b.text && b.text.trim());
+    for(const b of pageBoxes){
+      const x=b.x*renderScale,y=b.y*renderScale,w=b.w*renderScale,h=b.h*renderScale;
+      const pad=(Number(b.padding)||0)*renderScale;
+      // Match the editor's white text-box cover so the old PDF text is hidden.
+      ctx.save();ctx.fillStyle='#ffffff';ctx.fillRect(x,y,w,h);
+      const family=b.fontFamily==='TimesRoman'?'serif':b.fontFamily==='Courier'?'monospace':'Arial, sans-serif';
+      const px=Math.max(1,(Number(b.fontSize)||8)*renderScale);
+      ctx.font=(b.italic?'italic ':'')+(b.bold?'bold ':'')+px+'px '+family;
+      ctx.fillStyle=b.color||'#111111';ctx.textBaseline='alphabetic';
+      const maxW=Math.max(1,w-2*pad), lineH=px*(Number(b.lineHeight)||1.15);
+      const lines=[];
+      for(const para of String(b.text).split('\n')){
+        if(!para){lines.push('');continue;}
+        let line='';
+        for(const word of para.split(/\s+/)){
+          const test=line?line+' '+word:word;
+          if(line && ctx.measureText(test).width>maxW){lines.push(line);line=word;} else line=test;
+        }
+        lines.push(line);
+      }
+      const maxLines=Math.max(0,Math.floor((h-2*pad)/lineH));
+      let baseline=y+pad+px;
+      ctx.save();ctx.beginPath();ctx.rect(x+pad,y+pad,maxW,Math.max(0,h-2*pad));ctx.clip();
+      for(const line of lines.slice(0,maxLines)){
+        let tx=x+pad;
+        const tw=ctx.measureText(line).width;
+        if(b.align==='center')tx+=Math.max(0,(maxW-tw)/2);
+        else if(b.align==='right')tx+=Math.max(0,maxW-tw);
+        ctx.fillText(line,tx,baseline);baseline+=lineH;
+      }
+      ctx.restore();ctx.restore();
+    }
+    return canvasEl;
+  }
+  async function makeCleanJpg(pageNo,preview=false){
+    const raw=await renderPageToImage(pageNo,1.6);
+    // Include the user's text-box edits in the JPG, just as in the edited-PDF export.
+    drawEditedBoxesOnCanvas(raw,pageNo,1.6);
+    let result=raw;
+    if($('pureWhiteBg').checked) result=makePaperPureWhite(result,Number($('whiteThreshold').value));
+    if(preview){
+      const pc=$('cleanPreviewCanvas'), maxW=900, ratio=Math.min(1,maxW/result.width);
+      pc.width=Math.round(result.width*ratio);pc.height=Math.round(result.height*ratio);
+      pc.getContext('2d').drawImage(result,0,0,pc.width,pc.height);
+      $('cleanPreviewWrap').hidden=false;
+      return;
+    }
+    const base=state.fileName.replace(/_edited\.pdf$/i,'').replace(/\.pdf$/i,'');
+    const ok=await downloadCanvasJpg(result,base+'_page_'+String(pageNo).padStart(3,'0')+'.jpg',Number($('jpgQuality').value));
+    if(!ok)throw new Error('The browser could not create the JPG image.');
+  }
+  $('previewClean').addEventListener('click',async()=>{
+    try{if($('previewClean')) $('previewClean').disabled=true;setStatus('Preparing cleaned preview…');await makeCleanJpg(state.page,true);setStatus('Cleaned preview ready.');}
+    catch(e){console.error(e);alert('Preview failed: '+e.message);setStatus('Preview failed.');}
+    finally{if($('previewClean')) $('previewClean').disabled=false;}
+  });
+  $('downloadCurrentJpg').addEventListener('click',async()=>{
+    try{if($('downloadCurrentJpg')) $('downloadCurrentJpg').disabled=true;setStatus('Exporting current page as JPG…');await makeCleanJpg(state.page,false);setStatus('This page JPG downloaded.');}
+    catch(e){console.error(e);alert('JPG export failed: '+e.message);setStatus('JPG export failed.');}
+    finally{if($('downloadCurrentJpg')) $('downloadCurrentJpg').disabled=false;}
+  });
+  $('downloadAllJpg').addEventListener('click',async()=>{
+    try{
+      if($('downloadAllJpg')) $('downloadAllJpg').disabled=true;
+      for(let n=1;n<=state.pageCount;n++){setStatus('Exporting JPG '+n+' of '+state.pageCount+'…');await makeCleanJpg(n,false);}
+      setStatus('All page JPGs exported. Your original PDF was not changed.');
+    }catch(e){console.error(e);alert('JPG export stopped: '+e.message);setStatus('JPG export failed.');}
+    finally{if($('downloadAllJpg')) $('downloadAllJpg').disabled=false;}
+  });
+
 })();
 </script>
 </body>
 </html>
+<style>
+/* One compact horizontal control strip; reserve at least 75% of the screen for PDF preview. */
+@media (min-width: 701px) {
+  aside {
+    display:flex !important;
+    flex-direction:row !important;
+    flex-wrap:nowrap !important;
+    align-items:center !important;
+    gap:6px !important;
+    width:100% !important;
+    max-height:25vh !important;
+    min-height:0 !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    white-space:nowrap;
+    padding:5px 8px !important;
+  }
+  aside > h2, aside > p, aside #selectionHelp,
+  aside > .field, aside > .inline,
+  aside #jpgTools {
+    flex:0 0 auto !important;
+    width:auto !important;
+    margin:0 !important;
+    align-self:center !important;
+  }
+  aside > h2, aside > p, aside #selectionHelp { padding:4px 6px !important; }
+  aside #jpgTools {
+    flex-wrap:nowrap !important;
+    gap:5px !important;
+    padding:4px 6px !important;
+  }
+  aside #jpgTools .field { flex:0 0 auto !important; min-width:90px !important; padding:3px 5px !important; }
+  aside #jpgTools .field:first-of-type { min-width:125px !important; }
+  aside #jpgTools > button { flex:0 0 auto !important; white-space:nowrap; }
+  aside #cleanPreviewWrap { flex:0 0 220px !important; max-width:220px !important; }
+  aside > .field { min-width:95px !important; padding:4px 6px !important; }
+  aside > .field:has(#specialChars) { flex:0 0 200px !important; min-width:200px !important; }
+  aside > .inline { flex-wrap:nowrap !important; gap:5px !important; padding:4px 6px !important; }
+  aside > .inline .field { min-width:70px !important; }
+  aside #specialChars { flex-wrap:nowrap !important; overflow-x:auto; max-width:190px; }
+  aside #specialChars button { min-width:22px !important; padding:2px 4px !important; }
+  aside .field label { font-size:10px !important; }
+  aside input, aside select { max-width:105px; padding:3px 4px !important; }
+  aside button { padding:4px 6px !important; font-size:11px !important; }
+  .viewer { padding:8px 12px 12px !important; }
+  .stage-wrap { height:calc(100vh - 205px) !important; min-height:75vh !important; max-height:none !important; }
+}
+@media (max-width:700px) {
+  aside { max-height:25vh !important; overflow:auto !important; }
+  .stage-wrap { height:75vh !important; min-height:300px !important; }
+}
+</style>
