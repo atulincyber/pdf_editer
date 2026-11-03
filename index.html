@@ -38,8 +38,9 @@ main { display:grid; grid-template-columns:minmax(0,1fr) 300px; min-height:calc(
 #pdfCanvas { display:block; }
 #overlay { position:absolute; inset:0; cursor:crosshair; touch-action:none; }
 .box { position:absolute; border:2px solid transparent; background:transparent; box-sizing:border-box; line-height:1.25; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; color:#111; }
-.box.selected { border:2px solid #e34b32; background:#e34b3210; outline:1px dashed #e34b32; }
-.box[contenteditable="true"] { cursor:text; outline:1px dashed #e34b32; user-select:text; -webkit-user-select:text; white-space:pre-wrap !important; tab-size:4; }
+.box.selected { border:3px solid #e83e8c !important; background:#e83e8c0d; outline:1px solid #e83e8c; }
+.box:not([contenteditable="true"]):hover { border:3px solid #e83e8c !important; background:#e83e8c12; outline:1px solid #e83e8c; }
+.box[contenteditable="true"] { cursor:text; border:3px solid #2563eb !important; background:#2563eb0d; outline:1px solid #2563eb; user-select:text; -webkit-user-select:text; white-space:pre-wrap !important; tab-size:4; }
 .box[contenteditable="true"]:empty::before { content:attr(data-placeholder); color:#94a3b8; pointer-events:none; }
 aside { background:white; border-left:1px solid var(--border); padding:18px; }
 aside h2 { margin:0 0 8px; font-size:16px; }
@@ -219,6 +220,10 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
 #whiteBgPreviewControls { gap:7px !important; }
 #whiteBgPreviewControls input[type="range"] { accent-color:var(--blue); }
 @media(max-width:900px){#whiteBgPreviewControls{max-width:calc(100% - 8px);gap:6px!important;padding:6px!important}}
+
+button.danger { background:#fff1f1; color:#b42318; border:1px solid #f0b4b4; font-weight:650; }
+button.danger:disabled { opacity:.45; cursor:not-allowed; }
+
 </style>
 </head>
 <body>
@@ -247,15 +252,15 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
     <button id="zoomOut" disabled>−</button>
     <span id="zoomLabel">100%</span>
     <button id="zoomIn" disabled>+</button>
-    <button id="deleteBox" disabled>Delete box</button>
+    <button id="deleteBox" class="danger" type="button" title="Delete selected text box" disabled>Delete box</button>
     <span class="status" id="status">Open a PDF to begin.</span>
-  </div>
+</div>
   <div class="stage-wrap">
     <div id="whiteBgPreviewControls" aria-label="PDF background cleaning controls" style="position:sticky;top:8px;z-index:30;width:max-content;max-width:calc(100% - 12px);margin:0 8px 8px auto;padding:7px 10px;background:#ffffffed;border:1px solid #cbd3df;border-radius:9px;box-shadow:0 2px 8px #18243b20;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;white-space:nowrap"><input type="checkbox" id="pureWhiteBg" checked> Pure white</label>
       <label for="whiteThreshold" style="font-size:12px;white-space:nowrap">Threshold</label>
-      <input id="whiteThreshold" type="range" min="130" max="255" value="190" style="width:130px;max-width:28vw;padding:0">
-      <small id="whiteThresholdLabel" style="font-size:11px;min-width:28px">190</small>
+      <input id="whiteThreshold" type="range" min="130" max="255" value="255" style="width:130px;max-width:28vw;padding:0">
+      <small id="whiteThresholdLabel" style="font-size:11px;min-width:28px">255</small>
       <span style="width:1px;height:22px;background:#d5dbe5;margin:0 2px"></span>
       <button type="button" id="grayscaleMode" aria-pressed="false" title="Convert colour to grayscale using luminance" style="padding:5px 10px;font-size:12px;white-space:nowrap">Grayscale: Off</button>
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap"><input type="checkbox" id="adaptiveThreshold"> Adaptive threshold</label>
@@ -371,7 +376,6 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
   <div class="inline">
     <button id="fitText" disabled>Fit</button>
     <button id="clearText" disabled>Clear</button>
-    <button id="deleteBoxSide" type="button" disabled>Delete</button>
   </div>
 
 
@@ -390,9 +394,9 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const $ = id => document.getElementById(id);
   const fileInput=$('file'), stage=$('stage'), empty=$('empty'), canvas=$('pdfCanvas'), overlay=$('overlay');
-  const ctx=canvas.getContext('2d');
-  const state={pdfjs:null, originalBytes:null, fileName:'edited.pdf', page:1, pageCount:0, scale:1, zoom:1, fitScale:1, fitWidthScale:1, viewport:null, boxes:[], selectedId:null, drawing:null, pendingChar:null, nextId:1, renderToken:0, renderTask:null, basePreviewImageData:null, miniPreviewShowingWidth:false, zoomBeforeMiniFit:1};
-  const controls=['fontFamily','fontSize','align','bold','italic','ink','padding','fitText','clearText','deleteBox','deleteBoxSide'];
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const state={pdfjs:null, originalBytes:null, fileName:'edited.pdf', page:1, pageCount:0, scale:1, zoom:1, fitScale:1, fitWidthScale:1, viewport:null, boxes:[], selectedId:null, editingId:null, drawing:null, pendingChar:null, nextId:1, renderToken:0, renderTask:null, basePreviewImageData:null, miniPreviewShowingWidth:false, zoomBeforeMiniFit:1};
+  const controls=['fontFamily','fontSize','align','bold','italic','ink','padding','fitText','clearText','deleteBox'];
   const setStatus=s=>$('status').textContent=s;
   const selected=()=>state.boxes.find(b=>b.id===state.selectedId);
   const pageBoxes=()=>state.boxes.filter(b=>b.page===state.page);
@@ -407,7 +411,7 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
       state.originalBytes=await file.arrayBuffer();
       state.fileName=file.name.replace(/\.pdf$/i,'')+'_edited.pdf';
       state.pdfjs=await pdfjsLib.getDocument({data:new Uint8Array(state.originalBytes.slice(0))}).promise;
-      state.pageCount=state.pdfjs.numPages; state.page=1; state.zoom=1; state.zoomBeforeMiniFit=1; state.miniPreviewShowingWidth=false; state.scale=1; state.fitScale=1; state.boxes=[]; state.selectedId=null; state.nextId=1;
+      state.pageCount=state.pdfjs.numPages; state.page=1; state.zoom=1; state.zoomBeforeMiniFit=1; state.miniPreviewShowingWidth=false; state.scale=1; state.fitScale=1; state.boxes=[]; state.selectedId=null; state.editingId=null; const del=$('deleteBox'); if(del) delete del.dataset.targetBoxId; state.nextId=1;
       empty.hidden=true; stage.hidden=false;
       $('pageCount').textContent=state.pageCount;
       ['prev','next','zoomOut','zoomIn','download','pageRange','goPage','miniPreview','previewClean','downloadCurrentJpg','downloadAllJpg'].forEach(id=>{const el=$(id); if(el) el.disabled=false;});
@@ -488,24 +492,67 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
   function drawBoxes(){
     overlay.innerHTML='';
     for(const b of pageBoxes()){
-      const el=document.createElement('div'); el.className='box'+(b.id===state.selectedId?' selected':'');
+      const el=document.createElement('div'); el.className='box'+(b.id===state.selectedId?' selected':'')+(b.id===state.editingId?' editing':''); el.dataset.boxId=String(b.id);
       const s=state.scale;
       Object.assign(el.style,{left:(b.x*s)+'px',top:(b.y*s)+'px',width:(b.w*s)+'px',height:(b.h*s)+'px',fontSize:(b.fontSize*s)+'px',fontWeight:b.bold?'700':'400',fontStyle:b.italic?'italic':'normal',fontFamily:previewFont(b.fontFamily),textAlign:b.align==='justify'?'left':b.align,color:b.color,lineHeight:b.lineHeight});
       el.style.padding=(b.padding*s)+'px';
       el.textContent=b.text;
       el.dataset.placeholder='Type here…';
       const isSelected=b.id===state.selectedId;
-      el.contentEditable=isSelected?'true':'false';
+      el.contentEditable=(b.id===state.editingId)?'true':'false';
       el.spellcheck=false;
       el.setAttribute('aria-label','PDF text box. Type directly here.');
+      // Hovering a box selects it for box-level actions (pink state).
+      // Clicking inside subsequently switches it to text-editing mode (blue state).
+      el.addEventListener('pointerenter',()=>{
+        if(state.editingId===b.id)return; // keep the active typing box blue
+        const previous=overlay.querySelector('.box.selected');
+        if(previous && previous!==el){
+          previous.classList.remove('selected');
+          previous.contentEditable='false';
+          previous.classList.remove('editing');
+        }
+        state.selectedId=b.id;
+        state.editingId=null;
+        const deleteControl=$('deleteBox');
+        if(deleteControl){deleteControl.dataset.targetBoxId=String(b.id);deleteControl.disabled=false;}
+        el.classList.add('selected');
+        el.classList.remove('editing');
+        el.contentEditable='false';
+        enableEditor(true);
+        ['deleteBox','fitText','clearText'].forEach(controlId=>{const control=$(controlId);if(control)control.disabled=false;});
+        const help=$('selectionHelp');
+        if(help)help.textContent=`Selected box ${b.id} · page ${b.page} · ${b.w.toFixed(1)} × ${b.h.toFixed(1)} pt`;
+      });
       el.addEventListener('pointerdown',e=>{
         e.stopPropagation();
-        if(state.selectedId!==b.id){
+        const rect=el.getBoundingClientRect();
+        const edge=9;
+        const px=e.clientX-rect.left, py=e.clientY-rect.top;
+        const onBoundary=px<=edge || py<=edge || px>=rect.width-edge || py>=rect.height-edge;
+        if(onBoundary){
+          // Select the complete box from its visible border without entering text-edit mode.
+          e.preventDefault();
+          state.editingId=null;
+          selectBox(b.id,false);
+          setStatus(`Box ${b.id} selected. Use Delete box to remove the entire box.`);
+          return;
+        }
+        if(state.selectedId!==b.id || state.editingId!==b.id){
+          state.editingId=b.id;
           selectBox(b.id);
           const id=b.id;
           requestAnimationFrame(()=>{
-            const active=overlay.querySelector('.box.selected[contenteditable="true"]');
-            if(active && state.selectedId===id){active.focus();const range=document.createRange();range.selectNodeContents(active);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}
+            const active=overlay.querySelector(`.box[data-box-id="${id}"]`);
+            if(active && state.selectedId===id && state.editingId===id){
+              active.focus();
+              const range=document.createRange();
+              range.selectNodeContents(active);
+              range.collapse(false);
+              const sel=window.getSelection();
+              sel.removeAllRanges();
+              sel.addRange(range);
+            }
           });
         }
       });
@@ -565,14 +612,21 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
     state.boxes.push(b); selectBox(b.id); drawBoxes(); setStatus('Text box created. Type directly inside the selected box.');
   });
 
-  function selectBox(id){
-    state.selectedId=id; const b=selected(); enableEditor(!!b);
+  function selectBox(id, focusText=true){
+    state.selectedId=id;
+    state.editingId=(focusText && id!=null)?id:null;
+    const deleteControl=$('deleteBox');
+    if(deleteControl){
+      if(id!=null) deleteControl.dataset.targetBoxId=String(id);
+      else delete deleteControl.dataset.targetBoxId;
+    }
+    const b=selected(); enableEditor(!!b);
     $('selectionHelp').textContent=b?`Selected box ${b.id} · page ${b.page} · ${b.w.toFixed(1)} × ${b.h.toFixed(1)} pt`:'Select a box and type directly inside it.';
     if(b){
       $('fontFamily').value=b.fontFamily||'Helvetica'; $('fontSize').value=b.fontSize; $('align').value=b.align; $('bold').checked=b.bold; $('italic').checked=!!b.italic; $('ink').value=b.color; $('padding').value=b.padding;
     }
-    ['deleteBox','deleteBoxSide','fitText','clearText'].forEach(id=>{const el=$(id); if(el) el.disabled=!b;}); drawBoxes();
-    if(b) requestAnimationFrame(()=>{const el=overlay.querySelector('.box.selected[contenteditable="true"]');if(el && state.selectedId===b.id){el.focus();const range=document.createRange();range.selectNodeContents(el);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}});
+    ['deleteBox','fitText','clearText'].forEach(id=>{const el=$(id); if(el) el.disabled=!b;}); drawBoxes();
+    if(b && focusText) requestAnimationFrame(()=>{const el=overlay.querySelector('.box.selected[contenteditable="true"]');if(el && state.selectedId===b.id){el.focus();const range=document.createRange();range.selectNodeContents(el);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}});
   }
   function updateSelected(){
     const b=selected(); if(!b)return;
@@ -590,6 +644,18 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
     setStatus(`Click on the PDF page to place ${state.pendingChar}. Then adjust its size using Font size.`);
   });
   document.addEventListener('keydown',e=>{
+    // Keyboard Delete removes the whole pink-selected box.
+    // In blue typing mode, Delete and Backspace remain normal text-editing keys.
+    if(e.key==='Delete' && state.selectedId!=null && state.editingId==null){
+      const target=e.target;
+      const tag=(target && target.tagName || '').toUpperCase();
+      const isFormField=tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT';
+      const isEditable=!!(target && (target.isContentEditable || target.closest && target.closest('[contenteditable="true"]')));
+      if(!isFormField && !isEditable){
+        deleteSelectedBox(e);
+        return;
+      }
+    }
     if(e.key==='Escape' && state.pendingChar){
       state.pendingChar=null;
       $('specialChars').querySelectorAll('button[data-char]').forEach(btn=>btn.classList.remove('armed'));
@@ -597,46 +663,60 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
       setStatus('Special-character placement cancelled.');
     }
   });
-  const deleteSelectedBox = (event) => {
-    if (event) {
+  // Dedicated box-level delete action. Hover stores the exact box ID on the
+  // toolbar button; clicking it deletes that box, independently of text focus.
+  function deleteSelectedBox(event){
+    if(event){
       event.preventDefault();
       event.stopPropagation();
+      if(event.stopImmediatePropagation) event.stopImmediatePropagation();
     }
-    const selectedBox = state.boxes.find(box => box.id === state.selectedId);
-    if (!selectedBox) {
-      setStatus('Select a text box first, then click Delete.');
+    const button=$('deleteBox');
+    const rawId=(button && button.dataset.targetBoxId) || state.selectedId;
+    const id=rawId==null ? null : Number(rawId);
+    if(id==null || !Number.isFinite(id)){
+      setStatus('Hover over a text box until its border turns pink, then click Delete selected box.');
       return;
     }
-
-    state.boxes = state.boxes.filter(box => box.id !== selectedBox.id);
-    state.selectedId = null;
-
-    enableEditor(false);
-
-    const help = $('selectionHelp');
-    if (help) help.textContent = 'Select a box and type directly inside it.';
-
-    // Redraw immediately so the selected rectangle disappears from the preview.
+    const index=state.boxes.findIndex(box=>box.id===id);
+    if(index<0){
+      if(button) delete button.dataset.targetBoxId;
+      state.selectedId=null;
+      state.editingId=null;
+      enableEditor(false);
+      drawBoxes();
+      setStatus('That box is no longer available. Hover over it again to select it.');
+      return;
+    }
+    const removed=state.boxes.splice(index,1)[0];
+    if(state.selectedId===id) state.selectedId=null;
+    if(state.editingId===id) state.editingId=null;
+    if(button) delete button.dataset.targetBoxId;
+    state.drawing=null;
+    const remaining=selected();
+    enableEditor(!!remaining);
+    const help=$('selectionHelp');
+    if(help) help.textContent=remaining
+      ? `Selected box ${remaining.id} · page ${remaining.page} · ${remaining.w.toFixed(1)} × ${remaining.h.toFixed(1)} pt`
+      : 'Select a box and type directly inside it.';
     drawBoxes();
-    setStatus('Text box deleted.');
-  };
-
-  $('deleteBox').addEventListener('click', deleteSelectedBox);
-  $('deleteBoxSide').addEventListener('click', deleteSelectedBox);
-
-  // Keyboard delete shortcut: remove the selected PDF text box when focus is not
-  // inside an editable field. Let Delete/Backspace edit text normally in controls.
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Delete' && event.key !== 'Backspace') return;
-    const target = event.target;
-    const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
-    const typing = tag === 'input' || tag === 'textarea' || tag === 'select' ||
-      (target && target.isContentEditable);
-    if (typing) return;
-    if (!state.boxes.some(box => box.id === state.selectedId)) return;
+    setStatus(`Text box ${removed.id} deleted.`);
+  }
+  const deleteBoxButton=$('deleteBox');
+if(deleteBoxButton){
+  deleteBoxButton.addEventListener('click',event=>{
     event.preventDefault();
+    event.stopPropagation();
     deleteSelectedBox(event);
   });
+}
+  if(deleteBoxButton){
+    // Use a single capture-phase click handler. Do not bind deletion to the
+    // editable text area's keyboard Delete/Backspace events.
+    deleteBoxButton.addEventListener('click',deleteSelectedBox,true);
+  }
+
+  // Delete/Backspace remain ordinary text-editing keys inside a text box.
   $('clearText').addEventListener('click',()=>{const b=selected();if(b){b.text='';drawBoxes();}});
   $('fitText').addEventListener('click',()=>{
     const b=selected();if(!b||!b.text)return;
@@ -1182,4 +1262,8 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
   aside { max-height:25vh !important; overflow:auto !important; }
   .stage-wrap { height:75vh !important; min-height:300px !important; }
 }
+
+button.danger { background:#fff1f1; color:#b42318; border:1px solid #f0b4b4; font-weight:650; }
+button.danger:disabled { opacity:.45; cursor:not-allowed; }
+
 </style>
