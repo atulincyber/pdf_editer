@@ -215,6 +215,10 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
   aside > .field, aside > .inline { flex:1 1 145px !important; }
 }
 
+
+#whiteBgPreviewControls { gap:7px !important; }
+#whiteBgPreviewControls input[type="range"] { accent-color:var(--blue); }
+@media(max-width:900px){#whiteBgPreviewControls{max-width:calc(100% - 8px);gap:6px!important;padding:6px!important}}
 </style>
 </head>
 <body>
@@ -250,8 +254,19 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
     <div id="whiteBgPreviewControls" aria-label="PDF background cleaning controls" style="position:sticky;top:8px;z-index:30;width:max-content;max-width:calc(100% - 12px);margin:0 8px 8px auto;padding:7px 10px;background:#ffffffed;border:1px solid #cbd3df;border-radius:9px;box-shadow:0 2px 8px #18243b20;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;white-space:nowrap"><input type="checkbox" id="pureWhiteBg" checked> Pure white</label>
       <label for="whiteThreshold" style="font-size:12px;white-space:nowrap">Threshold</label>
-      <input id="whiteThreshold" type="range" min="130" max="245" value="190" style="width:130px;max-width:28vw;padding:0">
+      <input id="whiteThreshold" type="range" min="130" max="255" value="190" style="width:130px;max-width:28vw;padding:0">
       <small id="whiteThresholdLabel" style="font-size:11px;min-width:28px">190</small>
+      <span style="width:1px;height:22px;background:#d5dbe5;margin:0 2px"></span>
+      <button type="button" id="grayscaleMode" aria-pressed="false" title="Convert colour to grayscale using luminance" style="padding:5px 10px;font-size:12px;white-space:nowrap">Grayscale: Off</button>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap"><input type="checkbox" id="adaptiveThreshold"> Adaptive threshold</label>
+      <input id="adaptiveStrength" type="range" min="0" max="100" value="55" title="Adaptive threshold strength" style="width:76px;padding:0" disabled>
+      <small id="adaptiveStrengthLabel" style="font-size:11px;min-width:25px">55%</small>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap"><input type="checkbox" id="backgroundFlatten"> Background flatten</label>
+      <input id="flattenStrength" type="range" min="0" max="100" value="50" title="Background flattening strength" style="width:76px;padding:0" disabled>
+      <small id="flattenStrengthLabel" style="font-size:11px;min-width:25px">50%</small>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap"><input type="checkbox" id="denoise"> Denoise</label>
+      <input id="denoiseStrength" type="range" min="0" max="100" value="45" title="Denoise strength" style="width:76px;padding:0" disabled>
+      <small id="denoiseStrengthLabel" style="font-size:11px;min-width:25px">45%</small>
     </div>
     <div id="miniPreviewWrap" class="mini-preview-wrap">
       <button id="miniPreview" type="button" disabled title="Click to fit the current PDF page to the available width">
@@ -727,17 +742,16 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
       const chosenPages=parsePageRange(rangeText,totalPages);
       const pdf=await PDFDocument.create();
       const outputIndexByOriginalPage=new Map();
-      if($('pureWhiteBg') && $('pureWhiteBg').checked){
-        // To make the white-paper filter part of the saved PDF (not just the JPG
+      if(hasAnyImageFilterEnabled()) {
+        // Apply enabled scan filters to the saved PDF (not just the JPG
         // or on-screen preview), rasterize each selected page, whiten its paper,
         // and place that processed page image into the output PDF. Added text
         // boxes are drawn afterwards as normal PDF text overlays.
-        const filterThreshold=Number($('whiteThreshold').value)||190;
         for(let i=0;i<chosenPages.length;i++){
           const originalPageNo=chosenPages[i];
           setStatus('Applying white background to PDF page '+originalPageNo+' of '+chosenPages.length+'…');
           const rendered=await renderPageToImage(originalPageNo,1.6);
-          const cleaned=makePaperPureWhite(rendered,filterThreshold);
+          const cleaned=processImageFilters(rendered);
           const pngBytes=await new Promise((resolve,reject)=>cleaned.toBlob(blob=>{
             if(!blob){reject(new Error('Could not prepare cleaned page image.'));return;}
             blob.arrayBuffer().then(buf=>resolve(new Uint8Array(buf))).catch(reject);
@@ -907,44 +921,130 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
     await page.render({canvasContext:c,viewport,background:'rgb(255,255,255)'}).promise;
     return out;
   }
-  // Convert light paper pixels to exact white while retaining darker text and marks.
-  function makePaperPureWhite(source, threshold){
-    const out=document.createElement('canvas'); out.width=source.width; out.height=source.height;
-    const c=out.getContext('2d',{willReadFrequently:true}); c.drawImage(source,0,0);
-    const w=out.width,h=out.height,img=c.getImageData(0,0,w,h),d=img.data;
-    const cut=Math.max(0,Math.min(255,Number(threshold)||190));
+  // Scan cleanup pipeline. All filters are opt-in and always start from untouched pixels.
+  function filterPaperPixels(imageData,threshold){
+    const d=imageData.data,cut=Math.max(0,Math.min(255,Number(threshold)||190));
     for(let i=0;i<d.length;i+=4){
       const y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
       if(y>=cut){d[i]=255;d[i+1]=255;d[i+2]=255;}
     }
-    c.putImageData(img,0,0); return out;
+    return imageData;
   }
-  // Apply the exact same paper-whitening filter to the visible PDF preview.
-  // Always start from the pristine page pixels so moving the slider in either
-  // direction updates the preview accurately without accumulating changes.
-  function applyWhiteFilterToPdfPreview(){
-    if(!state.basePreviewImageData || stage.hidden) return;
-    const ctx=canvas.getContext('2d',{willReadFrequently:true});
-    const source=state.basePreviewImageData;
-    const image=ctx.createImageData(source.width,source.height);
-    image.data.set(source.data);
-    if($('pureWhiteBg').checked){
-      const cut=Number($('whiteThreshold').value)||190;
-      const d=image.data;
-      for(let i=0;i<d.length;i+=4){
-        const y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
-        if(y>=cut){d[i]=255;d[i+1]=255;d[i+2]=255;}
+  function makePaperPureWhite(source,threshold){
+    const out=document.createElement('canvas');out.width=source.width;out.height=source.height;
+    const c=out.getContext('2d',{willReadFrequently:true});c.drawImage(source,0,0);
+    const img=c.getImageData(0,0,out.width,out.height);c.putImageData(filterPaperPixels(img,threshold),0,0);return out;
+  }
+  function hasAnyImageFilterEnabled(){
+    return !!(($('pureWhiteBg')&&$('pureWhiteBg').checked)||($('adaptiveThreshold')&&$('adaptiveThreshold').checked)||($('backgroundFlatten')&&$('backgroundFlatten').checked)||($('denoise')&&$('denoise').checked)||grayscaleModeEnabled);
+  }
+  function localMeanGray(gray,w,h,radius){
+    const stride=w+1, integral=new Float64Array((w+1)*(h+1));
+    for(let y=1;y<=h;y++){
+      let row=0;const src=(y-1)*w;
+      for(let x=1;x<=w;x++){row+=gray[src+x-1];integral[y*stride+x]=integral[(y-1)*stride+x]+row;}
+    }
+    const mean=new Float32Array(w*h);
+    for(let y=0;y<h;y++){
+      const y0=Math.max(0,y-radius),y1=Math.min(h,y+radius+1);
+      for(let x=0;x<w;x++){
+        const x0=Math.max(0,x-radius),x1=Math.min(w,x+radius+1);
+        const sum=integral[y1*stride+x1]-integral[y0*stride+x1]-integral[y1*stride+x0]+integral[y0*stride+x0];
+        mean[y*w+x]=sum/((x1-x0)*(y1-y0));
       }
     }
-    ctx.putImageData(image,0,0);
+    return mean;
   }
-  const whiteThresholdInput=$('whiteThreshold');
-  if(whiteThresholdInput) whiteThresholdInput.addEventListener('input',()=>{
-    $('whiteThresholdLabel').textContent=whiteThresholdInput.value;
+  let grayscaleModeEnabled=false;
+  function applyGrayscale(imageData){
+    const d=imageData.data;
+    for(let i=0;i<d.length;i+=4){
+      const y=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]);
+      d[i]=y;d[i+1]=y;d[i+2]=y;
+    }
+    return imageData;
+  }
+  function processImageData(imageData){
+    const d=imageData.data,w=imageData.width,h=imageData.height,n=w*h;
+    const enabledFlatten=$('backgroundFlatten')&&$('backgroundFlatten').checked;
+    const enabledDenoise=$('denoise')&&$('denoise').checked;
+    const enabledAdaptive=$('adaptiveThreshold')&&$('adaptiveThreshold').checked;
+    const gray=new Float32Array(n);
+    for(let p=0,i=0;p<n;p++,i+=4)gray[p]=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+
+    if(enabledFlatten){
+      const strength=(Number($('flattenStrength').value)||0)/100;
+      if(strength>0){
+        const bg=localMeanGray(gray,w,h,Math.max(8,Math.round(Math.min(w,h)*0.012)));
+        for(let p=0,i=0;p<n;p++,i+=4){
+          const lift=Math.max(0,255-bg[p])*strength*Math.max(0,Math.min(1,(gray[p]-(bg[p]-38))/48));
+          if(lift>0){d[i]=Math.min(255,d[i]+lift);d[i+1]=Math.min(255,d[i+1]+lift);d[i+2]=Math.min(255,d[i+2]+lift);gray[p]=Math.min(255,gray[p]+lift);}
+        }
+      }
+    }
+    if(enabledDenoise){
+      const strength=(Number($('denoiseStrength').value)||0)/100;
+      if(strength>0&&w>2&&h>2){
+        const original=new Float32Array(gray);
+        for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+          const p=y*w+x, vals=[original[p-w-1],original[p-w],original[p-w+1],original[p-1],original[p+1],original[p+w-1],original[p+w],original[p+w+1]].sort((a,b)=>a-b);
+          const med=(vals[3]+vals[4])/2, diff=Math.abs(original[p]-med), amount=Math.max(0,Math.min(1,(diff-18)/65))*strength;
+          if(amount>0){const delta=(med-original[p])*amount,i=p*4;d[i]=Math.max(0,Math.min(255,d[i]+delta));d[i+1]=Math.max(0,Math.min(255,d[i+1]+delta));d[i+2]=Math.max(0,Math.min(255,d[i+2]+delta));gray[p]=original[p]+delta;}
+        }
+      }
+    }
+    if(enabledAdaptive){
+      const strength=(Number($('adaptiveStrength').value)||0)/100;
+      if(strength>0){
+        const mean=localMeanGray(gray,w,h,Math.max(8,Math.round(Math.min(w,h)*0.009)));
+        const original=new Uint8ClampedArray(d);
+        const offset=4+strength*18;
+        for(let p=0,i=0;p<n;p++,i+=4){
+          const threshold=mean[p]-offset;
+          const target=gray[p]<threshold?0:255;
+          const blend=strength;
+          d[i]=original[i]*(1-blend)+target*blend;d[i+1]=original[i+1]*(1-blend)+target*blend;d[i+2]=original[i+2]*(1-blend)+target*blend;
+        }
+      }
+    }
+    if($('pureWhiteBg')&&$('pureWhiteBg').checked)filterPaperPixels(imageData,Number($('whiteThreshold').value));
+    if(grayscaleModeEnabled) applyGrayscale(imageData);
+    return imageData;
+  }
+  function processImageFilters(source){
+    const out=document.createElement('canvas');out.width=source.width;out.height=source.height;
+    const c=out.getContext('2d',{willReadFrequently:true});c.drawImage(source,0,0);
+    const img=c.getImageData(0,0,out.width,out.height);c.putImageData(processImageData(img),0,0);return out;
+  }
+  function applyWhiteFilterToPdfPreview(){
+    if(!state.basePreviewImageData||stage.hidden)return;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true}),source=state.basePreviewImageData;
+    const image=ctx.createImageData(source.width,source.height);image.data.set(source.data);
+    ctx.putImageData(processImageData(image),0,0);
+  }
+  function bindScanFilter(id,rangeId,labelId){
+    const toggle=$(id),range=$(rangeId),label=$(labelId);
+    if(range)range.disabled=!(toggle&&toggle.checked);
+    if(toggle)toggle.addEventListener('change',()=>{if(range)range.disabled=!toggle.checked;applyWhiteFilterToPdfPreview();});
+    if(range)range.addEventListener('input',()=>{if(label)label.textContent=range.value+'%';applyWhiteFilterToPdfPreview();});
+  }
+  const grayscaleModeButton=$('grayscaleMode');
+  if(grayscaleModeButton)grayscaleModeButton.addEventListener('click',()=>{
+    grayscaleModeEnabled=!grayscaleModeEnabled;
+    grayscaleModeButton.textContent=grayscaleModeEnabled?'Grayscale: On':'Grayscale: Off';
+    grayscaleModeButton.setAttribute('aria-pressed',String(grayscaleModeEnabled));
+    grayscaleModeButton.style.background=grayscaleModeEnabled?'#1769e0':'white';
+    grayscaleModeButton.style.color=grayscaleModeEnabled?'white':'#172033';
+    grayscaleModeButton.style.borderColor=grayscaleModeEnabled?'#1769e0':'#cbd3df';
     applyWhiteFilterToPdfPreview();
   });
+  const whiteThresholdInput=$('whiteThreshold');
+  if(whiteThresholdInput)whiteThresholdInput.addEventListener('input',()=>{$('whiteThresholdLabel').textContent=whiteThresholdInput.value;applyWhiteFilterToPdfPreview();});
   const pureWhiteInput=$('pureWhiteBg');
-  if(pureWhiteInput) pureWhiteInput.addEventListener('change',applyWhiteFilterToPdfPreview);
+  if(pureWhiteInput)pureWhiteInput.addEventListener('change',applyWhiteFilterToPdfPreview);
+  bindScanFilter('adaptiveThreshold','adaptiveStrength','adaptiveStrengthLabel');
+  bindScanFilter('backgroundFlatten','flattenStrength','flattenStrengthLabel');
+  bindScanFilter('denoise','denoiseStrength','denoiseStrengthLabel');
 
   function downloadCanvasJpg(canvasEl,name,quality){
     return new Promise(resolve=>canvasEl.toBlob(blob=>{
@@ -996,7 +1096,7 @@ aside > .inline:has(#bold), aside > .inline:has(#lineHeight), aside > .inline:ha
     // Include the user's text-box edits in the JPG, just as in the edited-PDF export.
     drawEditedBoxesOnCanvas(raw,pageNo,1.6);
     let result=raw;
-    if($('pureWhiteBg').checked) result=makePaperPureWhite(result,Number($('whiteThreshold').value));
+    result=processImageFilters(result);
     if(preview){
       const pc=$('cleanPreviewCanvas'), maxW=900, ratio=Math.min(1,maxW/result.width);
       pc.width=Math.round(result.width*ratio);pc.height=Math.round(result.height*ratio);
